@@ -19,7 +19,7 @@ const setupFastify = async () => {
             level: config_1.config.loggerLevel,
         },
         genReqId: () => (0, node_crypto_1.randomUUID)().toString(),
-        requestIdLogLabel: "requestId",
+       logController: { requestIdLogLabel: "requestId" },
         requestIdHeader: "x-request-id",
     });
     server.setErrorHandler(error_handler_1.errorHandler);
