@@ -19,6 +19,7 @@ export abstract class BaseComponent implements PaymentComponent {
   protected environment: BaseOptions['environment'];
   protected onComplete: (result: PaymentResult) => void;
   protected onError: (error: any, context?: { paymentReference?: string }) => void;
+  protected clientKey: string = '';
   private paymentCompleted: boolean = false;
   private commercetoolsPaymentId: string | null = null;
 
