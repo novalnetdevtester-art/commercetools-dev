@@ -384,8 +384,7 @@ export class Creditcard extends BaseComponent {
           frameborder="0"
           scrolling="no"
           style="
-            width:100%;
-            min-height:240px;
+            min-width: 40%;
             border:none;
             display:block;
           "
