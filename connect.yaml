@@ -1,0 +1,188 @@
+deployAs:
+  - name: enabler
+    applicationType: assets
+  - name: processor
+    applicationType: service
+    endpoint: /
+    scripts:
+      postDeploy: npm install && npm run connector:post-deploy
+      preUndeploy: npm install && npm run connector:pre-undeploy
+    configuration:
+      standardConfiguration:
+        - key: CTP_PROJECT_KEY
+          description: "commercetools project key"
+          required: true
+        - key: CTP_CLIENT_ID
+          description: "commercetools client ID with manage_payments, manage_orders, view_sessions, view_api_clients, manage_checkout_payment_intents & introspect_oauth_tokens scopes"
+          required: true
+        - key: CTP_AUTH_URL
+          description: "commercetools Auth URL Test"
+          required: true
+          default: "https://auth.europe-west1.gcp.commercetools.com"
+        - key: CTP_API_URL
+          description: "commercetools API URL Test"
+          required: true
+          default: "https://api.europe-west1.gcp.commercetools.com"
+        - key: CTP_SESSION_URL
+          description: "commercetools Session URL Test"
+          required: true
+          default: "https://session.europe-west1.gcp.commercetools.com"
+        - key: CTP_JWKS_URL
+          description: "JWKs url"
+          required: true
+          default: "https://mc-api.europe-west1.gcp.commercetools.com/.well-known/jwks.json"
+        - key: CTP_JWT_ISSUER
+          description: "JWT Issuer for jwt validation"
+          required: true
+          default: "https://mc-api.europe-west1.gcp.commercetools.com"
+        - key: NOVALNET_PRIVATE_KEY
+          description: Novalnet Access Key for API authentication
+          required: true
+        - key: NOVALNET_PUBLIC_KEY
+          description: Novalnet Public Key
+          required: true
+        - key: NOVALNET_TARIFF_KEY
+          description: Novalnet Tariff ID
+          required: true
+        - key: NOVALNET_CLIENT_KEY
+          description: Novalnet client key
+          required: true
+        - key: NOVALNET_WEBHOOK_URL
+          description: Novalnet webhook URL for webhook notifications
+          required: false
+        - key: NOVALNET_WEBHOOK_TEST_MODE
+          description: Novalnet webhook Test mode for webhook notifications
+          required: false
+        - key: NOVALNET_INVOICE_TEST_MODE
+          description: Enable test mode for Invoice payments (1=Test, 0=Live)
+          required: false
+        - key: NOVALNET_INVOICE_DUE_DATE
+          description: Due date in days for Invoice payments
+          required: false
+        - key: NOVALNET_INVOICE_PAYMENT_ACTION
+          description: Payment action for Invoice (payment/authorize)
+          required: true
+        - key: NOVALNET_INVOICE_PAYMENT_ACTION_MINIMUM_AMOUNT
+          description: Minimum amount for Invoice payment action
+        - key: NOVALNET_GUARANTEED_INVOICE_TEST_MODE
+          description: Enable test mode for Guanrantee Invoice payments (1=Test, 0=Live)
+          required: false
+        - key: NOVALNET_GUARANTEED_INVOICE_ALLOW_B2B_CUSTOMERS
+          description: Enable test mode for Guanrantee Invoice payments (1=Disable, 0=Enable)
+          required: false
+        - key: NOVALNET_GUARANTEED_INVOICE_FORCE_NON_GUARANTEED_PAYMENT
+          description: Enable test mode for Guanrantee Invoice payments (1=Disable, 0=Enable)
+          required: false
+        - key: NOVALNET_GUARANTEED_INVOICE_PAYMENT_ACTION
+          description: Payment action for Guanrantee Invoice (payment/authorize)
+          required: true
+        - key: NOVALNET_GUARANTEED_INVOICE_PAYMENT_ACTION_MINIMUM_AMOUNT
+          description: Minimum amount for Guanrantee Invoice payment action
+          required: false
+        - key: NOVALNET_GUARANTEED_SEPA_TEST_MODE
+          description: Enable test mode for Guanrantee Sepa payments (1=Test, 0=Live)
+          required: false
+        - key: NOVALNET_GUARANTEED_SEPA_ALLOW_B2B_CUSTOMERS
+          description: Enable test mode for Guanrantee Sepa payments (1=Disable, 0=Enable)
+          required: false
+        - key: NOVALNET_GUARANTEED_SEPA_FORCE_NON_GUARANTEED_PAYMENT
+          description: Enable test mode for Guanrantee Sepa payments (1=Disable, 0=Enable)
+          required: false
+        - key: NOVALNET_GUARANTEED_SEPA_PAYMENT_ACTION
+          description: Payment action for Guanrantee Sepa (payment/authorize)
+          required: true
+        - key: NOVALNET_GUARANTEED_SEPA_PAYMENT_ACTION_MINIMUM_AMOUNT
+          description: Minimum amount for Guanrantee Sepa payment action
+          required: false
+        - key: NOVALNET_PREPAYMENT_TEST_MODE
+          description: Enable test mode for Prepayment (1=Test, 0=Live)
+          required: false
+        - key: NOVALNET_PREPAYMENT_DUE_DATE
+          description: Due date in days for Prepayment
+          required: false
+        - key: NOVALNET_PREPAYMENT_PAYMENT_ACTION
+          description: Payment action for Prepayment (payment/authorize)
+          required: true
+        - key: NOVALNET_PREPAYMENT_PAYMENT_ACTION_MINIMUM_AMOUNT
+          description: Minimum amount for Prepayment action
+          required: false
+        - key: NOVALNET_SEPA_TEST_MODE
+          description: Enable test mode for Sepa (1=Test, 0=Live)
+          required: false
+        - key: NOVALNET_SEPA_DUE_DATE
+          description: Due date in days for Sepa
+          required: false
+        - key: NOVALNET_SEPA_PAYMENT_ACTION
+          description: Payment action for Sepa (payment/authorize)
+          required: true
+        - key: NOVALNET_SEPA_PAYMENT_ACTION_MINIMUM_AMOUNT
+          description: Minimum amount for Sepa action
+          required: false
+        - key: NOVALNET_CREDITCARD_TEST_MODE
+          description: Enable test mode for Creditcard (1=Test, 0=Live)
+          required: false
+        - key: NOVALNET_CREDITCARD_PAYMENT_ACTION
+          description: Payment action for Creditcard (payment/authorize)
+          required: true
+        - key: NOVALNET_CREDITCARD_PAYMENT_ACTION_MINIMUM_AMOUNT
+          description: Minimum amount for Creditcard action
+          required: false
+        - key: NOVALNET_CREDITCARD_ENFORCE_3D_SECURE_PAYMENT_OUTSIDE_EU
+          description: Enforce 3d secure payment outside EU for Creditcard 
+          required: false
+        - key: NOVALNET_CREDITCARD_DISPLAY_INLINE_CREDITCARD_FORM
+          description: Display inline creditcard form
+          required: false
+        - key: NOVALNET_ACH_TEST_MODE
+          description: Enable test mode for ACH (1=Test, 0=Live)
+          required: false
+        - key: NOVALNET_MULTIBANCO_TEST_MODE
+          description: Enable test mode for Multibanco (1=Test, 0=Live)
+          required: false
+        - key: NOVALNET_ALIPAY_TEST_MODE
+          description: Enable test mode for Alipay (1=Test, 0=Live)
+          required: false
+        - key: NOVALNET_BANCONTACT_TEST_MODE
+          description: Enable test mode for Bancontact (1=Test, 0=Live)
+          required: false
+        - key: NOVALNET_BLIK_TEST_MODE
+          description: Enable test mode for BLik (1=Test, 0=Live)
+          required: false
+        - key: NOVALNET_EPS_TEST_MODE
+          description: Enable test mode for EPS (1=Test, 0=Live)
+          required: false
+        - key: NOVALNET_MBWAY_TEST_MODE
+          description: Enable test mode for Mbway (1=Test, 0=Live)
+          required: false
+        - key: NOVALNET_ONLINE_BANK_TRANSFER_TEST_MODE
+          description: Enable test mode for Online Bank Transfer (1=Test, 0=Live)
+          required: false
+        - key: NOVALNET_PAYPAL_TEST_MODE
+          description: Enable test mode for Paypal (1=Test, 0=Live)
+          required: false
+        - key: NOVALNET_POSTFINANCE_TEST_MODE
+          description: Enable test mode for Postfinance (1=Test, 0=Live)
+          required: false
+        - key: NOVALNET_POSTFINANCE_CARD_TEST_MODE
+          description: Enable test mode for Postfinance card (1=Test, 0=Live)
+          required: false
+        - key: NOVALNET_PRZELEWY24_TEST_MODE
+          description: Enable test mode for Przelewy24 (1=Test, 0=Live)
+          required: false
+        - key: NOVALNET_TRUSTLY_TEST_MODE
+          description: Enable test mode for trustly (1=Test, 0=Live)
+          required: false
+        - key: NOVALNET_TWINT_TEST_MODE
+          description: Enable test mode for Twint (1=Test, 0=Live)
+          required: false
+        - key: NOVALNET_WECHATPAY_TEST_MODE
+          description: Enable test mode for Wechatpay (1=Test, 0=Live)
+          required: false
+        - key: MERCHANT_RETURN_URL
+          description: Merchant return URL for payment completion
+          required: false
+      securedConfiguration:
+        - key: CTP_CLIENT_SECRET
+          description: "commercetools client secret"
+          required: true
+
