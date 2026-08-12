@@ -14,8 +14,8 @@ export const setupFastify = async () => {
       level: config.loggerLevel,
     },
     genReqId: () => randomUUID().toString(),
-    requestIdLogLabel: "requestId",
-    requestIdHeader: "x-request-id",
+    requestIdHeader: 'x-request-id',
+    logController: { requestIdLogLabel: 'requestId' },
   });
 
   server.setErrorHandler(errorHandler);
