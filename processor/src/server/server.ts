@@ -14,10 +14,12 @@ export const setupFastify = async () => {
       level: config.loggerLevel,
     },
     genReqId: () => randomUUID().toString(),
+    logController: {
+      requestIdLogLabel: "requestId",
+    },
     requestIdHeader: "x-request-id",
-    logController: { requestIdLogLabel: "requestId" },
   });
-
+  
   server.setErrorHandler(errorHandler);
 
   await server.register(cors, {
