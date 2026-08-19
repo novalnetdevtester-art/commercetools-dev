@@ -20,7 +20,7 @@ import { BaseOptions } from "../../../payment-enabler/novalnet-payment-enabler";
 type CardTokenData = {
   hash: string;
   unique_id: string;
-  do_redirect?: string;
+  do_redirect?: string | boolean;
 };
 
 export class CreditcardBuilder
@@ -45,10 +45,6 @@ export class CreditcardBuilder
 export class Creditcard extends BaseComponent {
   private showPayButton: boolean;
 
-  /**
-   * Promise used to wait until Novalnet
-   * returns the pan hash and unique ID.
-   */
   private panHashPromise:
     | Promise<CardTokenData>
     | null = null;
@@ -61,9 +57,6 @@ export class Creditcard extends BaseComponent {
     | ((error: Error) => void)
     | null = null;
 
-  /**
-   * Prevent duplicate payment submission.
-   */
   private isSubmitting = false;
 
   constructor(
@@ -80,8 +73,7 @@ export class Creditcard extends BaseComponent {
       componentOptions?.showPayButton ?? false;
   }
 
-  mount(selector: string) {
-
+  async mount(selector: string) {
     const safeSelector =
       "#" +
       CSS.escape(
@@ -102,9 +94,6 @@ export class Creditcard extends BaseComponent {
       return;
     }
 
-    /**
-     * Prevent duplicate iframe render
-     */
     if (
       container.querySelector(
         "#novalnet_iframe",
@@ -113,69 +102,55 @@ export class Creditcard extends BaseComponent {
       return;
     }
 
-    /**
-     * Render template
-     */
     container.insertAdjacentHTML(
       "beforeend",
       this._getTemplate(),
     );
 
-    setTimeout(async () => {
-      const iframe =
-        document.getElementById(
-          "novalnet_iframe",
-        );
+    const iframe =
+      document.getElementById(
+        "novalnet_iframe",
+      );
 
-      if (!iframe) {
-        console.error(
-          "Novalnet iframe not found",
-        );
+    if (!iframe) {
+      console.error(
+        "Novalnet iframe not found",
+      );
 
-        return;
-      }
+      return;
+    }
 
-      const payButton =
-        document.querySelector(
-          "#purchaseOrderForm-paymentButton",
-        ) as HTMLButtonElement | null;
-
-      try {
-
-        await this._loadNovalnetScriptOnce();
-
-        await this._initNovalnetCreditCardForm(
-          payButton,
-        );
-      } catch (err) {
-        console.error(
-          "Failed to initialize Novalnet form:",
-          err,
-        );
-      }
-    }, 500);
-
-    /**
-     * Bind pay button once.
-     *
-     * The button now calls submit().
-     *
-     * submit() itself takes care of getting
-     * the pan hash when it is not available.
-     */
     const payButton =
+      document.querySelector(
+        "#purchaseOrderForm-paymentButton",
+      ) as HTMLButtonElement | null;
+
+    try {
+      await this._loadNovalnetScriptOnce();
+
+      await this._initNovalnetCreditCardForm(
+        payButton,
+      );
+    } catch (err) {
+      console.error(
+        "Failed to initialize Novalnet form:",
+        err,
+      );
+    }
+
+    const payButtonAfterInit =
       document.querySelector(
         "#purchaseOrderForm-paymentButton",
       ) as HTMLButtonElement | null;
 
     if (
       this.showPayButton &&
-      payButton &&
-      !(payButton as any)._nnBound
+      payButtonAfterInit &&
+      !(payButtonAfterInit as any)._nnBound
     ) {
-      (payButton as any)._nnBound = true;
+      (payButtonAfterInit as any)._nnBound = true;
 
-      payButton.addEventListener(
+      payButtonAfterInit.addEventListener(
         "click",
         async (e) => {
           e.preventDefault();
@@ -193,12 +168,26 @@ export class Creditcard extends BaseComponent {
     }
   }
 
-  /**
-   * Get pan hash from Novalnet.
-   *
-   * This method waits for the Novalnet
-   * on_success callback.
-   */
+  private _isRedirectRequired(
+    value: string | boolean | undefined,
+  ): boolean {
+    if (value === true) {
+      return true;
+    }
+
+    if (
+      typeof value === "string" &&
+      (
+        value.toLowerCase() === "true" ||
+        value === "1"
+      )
+    ) {
+      return true;
+    }
+
+    return false;
+  }
+
   private async _getPanHash(): Promise<CardTokenData> {
     const NovalnetUtility =
       (window as any)
@@ -219,7 +208,6 @@ export class Creditcard extends BaseComponent {
     }
 
     if (this.panHashPromise) {
-
       return this.panHashPromise;
     }
 
@@ -234,12 +222,13 @@ export class Creditcard extends BaseComponent {
         },
       );
 
+    const currentPromise =
+      this.panHashPromise;
 
     try {
-
       await NovalnetUtility.getPanHash();
       const result =
-        await this.panHashPromise;
+        await currentPromise;
 
       return result;
     } catch (error) {
@@ -252,7 +241,6 @@ export class Creditcard extends BaseComponent {
   }
 
   async submit() {
-
     if (this.isSubmitting) {
       console.warn(
         "[CC] Payment submission already in progress",
@@ -263,24 +251,24 @@ export class Creditcard extends BaseComponent {
 
     this.isSubmitting = true;
 
-    this.sdk.init({
-      environment:
-        this.environment,
-    });
-
-    const pathLocale =
-      window.location.pathname
-        .split("/")[1];
-
-    const url =
-      new URL(
-        window.location.href,
-      );
-
-    const baseSiteUrl =
-      url.origin;
-
     try {
+      this.sdk.init({
+        environment:
+          this.environment,
+      });
+
+      const pathLocale =
+        window.location.pathname
+          .split("/")[1];
+
+      const url =
+        new URL(
+          window.location.href,
+        );
+
+      const baseSiteUrl =
+        url.origin;
+
       const panhashInput =
         document.getElementById(
           "pan_hash",
@@ -309,7 +297,6 @@ export class Creditcard extends BaseComponent {
         "";
 
       if (!panhash || !uniqueId) {
-
         const cardData =
           await this._getPanHash();
 
@@ -320,8 +307,10 @@ export class Creditcard extends BaseComponent {
           cardData.unique_id;
 
         doRedirect =
-          cardData.do_redirect ??
-          "";
+          String(
+            cardData.do_redirect ??
+              "",
+          );
 
         if (panhashInput) {
           panhashInput.value =
@@ -345,30 +334,88 @@ export class Creditcard extends BaseComponent {
         );
       }
 
+      const redirectRequired =
+        this._isRedirectRequired(
+          doRedirect,
+        );
+
       const requestData:
         PaymentRequestSchemaDTO = {
         paymentMethod: {
           type: "CREDITCARD",
-
           panHash:
             panhash,
-
           uniqueId:
             uniqueId,
-
           doRedirect:
             doRedirect,
         },
-
         paymentOutcome:
           PaymentOutcome.AUTHORIZED,
-
         lang:
           pathLocale ?? "de",
-
         path:
           baseSiteUrl,
       };
+
+      if (redirectRequired) {
+
+        const response =
+          await fetch(
+            this.processorUrl +
+              "/redirectPayment",
+            {
+              method: "POST",
+              headers: {
+                "Content-Type":
+                  "application/json",
+                "X-Session-Id":
+                  this.sessionId,
+              },
+              body:
+                JSON.stringify(
+                  requestData,
+                ),
+            },
+          );
+
+        if (!response.ok) {
+          const errorText =
+            await response.text();
+
+          console.error(
+            "[CC] error:",
+            errorText,
+          );
+
+          throw new Error(
+            `Redirect payment failed. HTTP ${response.status}`,
+          );
+        }
+
+        const data =
+          await response.json();
+
+        console.log(
+          "[CC] Redirect payment response received",
+          {
+            hasTxnSecret:
+              !!data?.txnSecret,
+          },
+        );
+
+        if (!data?.txnSecret) {
+          throw new Error(
+            "Redirect payment response does not contain txnSecret.",
+          );
+        }
+
+        window.location.assign(
+          data.txnSecret,
+        );
+
+        return;
+      }
 
       const response =
         await fetch(
@@ -376,15 +423,12 @@ export class Creditcard extends BaseComponent {
             "/directPayment",
           {
             method: "POST",
-
             headers: {
               "Content-Type":
                 "application/json",
-
               "X-Session-Id":
                 this.sessionId,
             },
-
             body:
               JSON.stringify(
                 requestData,
@@ -397,33 +441,37 @@ export class Creditcard extends BaseComponent {
           await response.text();
 
         console.error(
-          "[CC] HTTP error:",
+          "[CC] error:",
           errorText,
         );
 
         throw new Error(
-          `HTTP error ${response.status}`,
+          `Direct payment failed. HTTP ${response.status}`,
         );
       }
 
-      const data =
-        await response.json();
+      const data = await response.json();
 
-      if (
-        data.paymentReference
-      ) {
-        this.onComplete?.({
-          isSuccess: true,
+		if (data?.txnSecret) {
+		  window.location.assign(data.txnSecret);
+		  return;
+		}
 
-          paymentReference:
-            data.paymentReference,
-        });
-      } else {
-        this.onError(
-          data?.transactionStatusText ||
-            "Payment failed. Please try again.",
-        );
-      }
+		if (data?.paymentReference && !data?.txnSecret) {
+		  this.onComplete?.({
+			isSuccess: true,
+			paymentReference: data.paymentReference,
+		  });
+		  return;
+		}
+
+		if (!data?.paymentReference && !data?.txnSecret) {
+		  this.onError(
+			data?.transactionStatusText ||
+			  "Payment failed. Please try again.",
+		  );
+		  return;
+		}
     } catch (e) {
       console.error(
         "[CC] Payment submit error:",
@@ -436,7 +484,8 @@ export class Creditcard extends BaseComponent {
           : "Some error occurred. Please try again.",
       );
     } finally {
-      this.isSubmitting = false;
+      this.isSubmitting =
+        false;
 
       const payButton =
         document.querySelector(
@@ -444,7 +493,8 @@ export class Creditcard extends BaseComponent {
         ) as HTMLButtonElement | null;
 
       if (payButton) {
-        payButton.disabled = false;
+        payButton.disabled =
+          false;
       }
     }
   }
@@ -469,7 +519,6 @@ export class Creditcard extends BaseComponent {
 
     return `
       <div class="${styles.wrapper}">
-
         <iframe
           id="novalnet_iframe"
           frameborder="0"
@@ -500,7 +549,6 @@ export class Creditcard extends BaseComponent {
         />
 
         ${payButton}
-
       </div>
     `;
   }
@@ -523,7 +571,6 @@ export class Creditcard extends BaseComponent {
       ) as HTMLScriptElement | null;
 
     if (existing) {
-
       if (
         (window as any)
           .NovalnetUtility
@@ -597,23 +644,19 @@ export class Creditcard extends BaseComponent {
     const res =
       await fetch(
         this.processorUrl +
-          "/getconfig",
+          "/getCreditcardConfig",
         {
           method: "POST",
-
           headers: {
             "Content-Type":
               "application/json",
-
             Accept:
               "application/json",
           },
-
           body: JSON.stringify({
             paymentMethod: {
               type: "CREDITCARD",
             },
-
             paymentOutcome:
               "AUTHORIZED",
           }),
@@ -625,7 +668,7 @@ export class Creditcard extends BaseComponent {
         await res.text();
 
       console.error(
-        "[CC] /getconfig failed:",
+        "[CC] failed:",
         errorText,
       );
 
@@ -650,6 +693,13 @@ export class Creditcard extends BaseComponent {
         json.paymentReference,
       );
 
+    const inline =
+      String(
+        json?.inline ?? "1",
+      ) === "1"
+        ? 1
+        : 0;
+
     NovalnetUtility.setClientKey(
       this.clientKey,
     );
@@ -658,7 +708,6 @@ export class Creditcard extends BaseComponent {
       callback: {
         on_success:
           async (data: any) => {
-
             if (
               !data?.hash ||
               !data?.unique_id
@@ -716,10 +765,11 @@ export class Creditcard extends BaseComponent {
 
             if (doRedirectInput) {
               doRedirectInput.value =
-                data.do_redirect ??
-                "";
+                String(
+                  data.do_redirect ??
+                    "",
+                );
             }
-
 
             if (
               this.panHashResolve
@@ -727,10 +777,8 @@ export class Creditcard extends BaseComponent {
               this.panHashResolve({
                 hash:
                   data.hash,
-
                 unique_id:
                   data.unique_id,
-
                 do_redirect:
                   data.do_redirect,
               });
@@ -796,7 +844,7 @@ export class Creditcard extends BaseComponent {
         id:
           "novalnet_iframe",
 
-        inline: 1,
+        inline,
 
         style: {
           container: "",
@@ -842,9 +890,6 @@ export class Creditcard extends BaseComponent {
       },
     };
 
-    /**
-     * Create iframe
-     */
     NovalnetUtility.createCreditCardForm(
       configurationObject,
     );
