@@ -198,52 +198,85 @@ export class NovalnetPaymentService extends AbstractPaymentService {
     return customer;
   }
 
-  public async failureResponse({ data }: { data: any }) {
-    const parsedData = typeof data === "string" ? JSON.parse(data) : data;
-    log.info("[failureResponse] Processing payment failure", {
-      ctPaymentID: parsedData.ctPaymentID,
-      pspReference: parsedData.pspReference,
-    });
-    await createTransactionCommentsType();
-    const raw = await this.ctPaymentService.getPayment({
-      id: parsedData.ctPaymentID,
-    } as any);
-    const payment = (raw as any)?.body ?? raw;
-    const version = payment.version;
-    const tx = payment.transactions?.find(
-      (t: any) => t.interactionId === parsedData.pspReference,
-    );
-    if (!tx) throw new Error("Transaction not found");
-    const txId = tx.id;
-    if (!txId) throw new Error("Transaction missing id");
-    const transactionComments = `Novalnet Transaction ID: ${
-      parsedData.tid ?? "NN/A"
-    }\nPayment Type: ${parsedData.payment_type ?? "NN/A"}\n${
-      parsedData.status_text ?? "NN/A"
-    }`;
+public async failureResponse({ data }: { data: any }) {
+  const parsedData = typeof data === "string" ? JSON.parse(data) : data;
 
-    await projectApiRoot
-      .payments()
-      .withId({ ID: parsedData.ctPaymentID })
-      .post({
-        body: {
-          version,
-          actions: [
-            {
-              action: "setTransactionCustomField",
-              transactionId: txId,
-              name: "transactionComments",
-              value: transactionComments,
-            },
-          ],
-        },
-      })
-      .execute();
-    log.info("[failureResponse] Payment failure comments saved", {
-      ctPaymentID: parsedData.ctPaymentID,
+  log.info("[failureResponse] Processing payment failure", {
+    ctPaymentID: parsedData.ctPaymentID,
+    pspReference: parsedData.pspReference,
+  });
+
+  await createTransactionCommentsType();
+
+  const raw = await this.ctPaymentService.getPayment({
+    id: parsedData.ctPaymentID,
+  } as any);
+
+  const payment = (raw as any)?.body ?? raw;
+  const version = payment.version;
+
+  const tx = payment.transactions?.find(
+    (t: any) => t.interactionId === parsedData.pspReference,
+  );
+
+  if (!tx) {
+    throw new Error("Transaction not found");
+  }
+
+  const txId = tx.id;
+
+  if (!txId) {
+    throw new Error("Transaction missing id");
+  }
+
+  const transactionComments = `Novalnet Transaction ID: ${
+    parsedData.tid ?? "NN/A"
+  }\nPayment Type: ${parsedData.payment_type ?? "NN/A"}\n${
+    parsedData.status_text ?? "NN/A"
+  }`;
+
+  const actions: PaymentUpdateAction[] = [];
+  
+  if (!tx.custom?.type) {
+    actions.push({
+      action: "setTransactionCustomType",
+      transactionId: txId,
+      type: {
+        key: "novalnet-custom-field",
+        typeId: "type",
+      },
     });
   }
 
+  actions.push({
+    action: "setTransactionCustomField",
+    transactionId: txId,
+    name: "transactionComments",
+    value: transactionComments,
+  });
+
+  actions.push({
+    action: "changeTransactionState",
+    transactionId: txId,
+    state: "Failure",
+  });
+
+  await projectApiRoot
+    .payments()
+    .withId({ ID: parsedData.ctPaymentID })
+    .post({
+      body: {
+        version,
+        actions,
+      },
+    })
+    .execute();
+
+  log.info("[failureResponse] Payment failure comments saved", {
+    ctPaymentID: parsedData.ctPaymentID,
+    transactionId: txId,
+  });
+}
   public async getConfigValues({ data }: { data: any }) {
     try {
       const clientKey = String(getConfig()?.novalnetClientkey ?? "");
@@ -360,8 +393,8 @@ export class NovalnetPaymentService extends AbstractPaymentService {
       const tid = responseData?.transaction?.tid ?? "";
       const paymentType = responseData?.transaction?.payment_type ?? "";
       const isTestMode = responseData?.transaction?.test_mode == 1;
-      const status = responseData?.transaction?.status;
-      const state = this.getTransactionState(status);
+      const status = String(responseData?.transaction?.status ?? "").toUpperCase();
+      const { state, transactionType } = this.getTransactionStatus(status);
       const statusCode = responseData?.transaction?.status_code ?? "";
       const locale = lang === "en" ? "en" : "de";
       const transactionComments = [
@@ -379,6 +412,15 @@ export class NovalnetPaymentService extends AbstractPaymentService {
         appendComments: false,
         setCustomType: true,
         errorMessage: "Transaction not found for PSP reference",
+      });
+
+      await this.addSettlementTransactionIfRequired({
+        paymentId: parsedData.ctPaymentId,
+        pspReference,
+        amount: responseData?.transaction?.amount,
+        currency: responseData?.transaction?.currency,
+        transactionType,
+        status,
       });
 
       log.info("[transactionUpdate] Payment updated in CT", {
@@ -515,7 +557,6 @@ export class NovalnetPaymentService extends AbstractPaymentService {
     ) {
       const paymentType = String(request.data.paymentMethod.type).toUpperCase();
 
-      /* ================= Address check ================= */
       const sameAddress =
         billingAddress?.city === deliveryAddress?.city &&
         billingAddress?.country === deliveryAddress?.country &&
@@ -523,29 +564,25 @@ export class NovalnetPaymentService extends AbstractPaymentService {
         billingAddressStreetNumber === deliveryAddressStreetNumber &&
         billingAddress?.postalCode === deliveryAddress?.postalCode;
 
-      /* ================= Country check ================= */
       const billingCountry = billingAddress && billingAddress.country;
       const isEuropean = billingCountry
         ? this.getEuropeanRegionCountryCodes().includes(billingCountry)
         : false;
 
-      /* ================= Currency check ================= */
       const isEur =
         String(parsedCart?.taxedPrice?.totalGross?.currencyCode) === "EUR";
 
-      /* ================= Amount check ================= */
       const orderTotal = Number(
         parsedCart?.taxedPrice?.totalGross?.centAmount ?? 0,
       );
       const minAmount = Number(minimumAmount) || 0;
       const amountValid = orderTotal >= minAmount;
-      /* ================= B2B country check ================= */
+
       const countryAllowed =
         allowb2bCustomers &&
         billingCountry &&
         ["DE", "AT", "CH"].includes(billingCountry);
 
-      /* ================= FINAL DECISION ================= */
       const guaranteePayment =
         Boolean(sameAddress) &&
         Boolean(isEuropean) &&
@@ -553,7 +590,6 @@ export class NovalnetPaymentService extends AbstractPaymentService {
         Boolean(amountValid) &&
         Boolean(countryAllowed);
 
-      /* ================= Force non-guarantee ================= */
       const isForceNonGuarantee =
         forceNonGuarantee !== undefined &&
         forceNonGuarantee !== null &&
@@ -774,16 +810,8 @@ export class NovalnetPaymentService extends AbstractPaymentService {
       };
     }
     const statusCode = parsedResponse?.transaction?.status_code;
-    const status = parsedResponse?.transaction?.status;
-
-    const state =
-      status === "PENDING" || status === "ON_HOLD"
-        ? "Pending"
-        : status === "CONFIRMED"
-          ? "Success"
-          : status === "CANCELLED"
-            ? "Canceled"
-            : "Failure";
+    const status = String(parsedResponse?.transaction?.status ?? "").toUpperCase();
+    const { state, transactionType } = this.getTransactionStatus(status);
     const transactions = parsedResponse?.transaction;
     const amount = transactions?.amount;
     const tid = transactions?.tid;
@@ -839,7 +867,7 @@ export class NovalnetPaymentService extends AbstractPaymentService {
       pspReference,
       paymentMethod: request.data.paymentMethod.type,
       transaction: {
-        type: "Authorization",
+        type: transactionType,
         amount: ctPayment.amountPlanned,
         interactionId: pspReference,
         state: state,
@@ -886,7 +914,6 @@ export class NovalnetPaymentService extends AbstractPaymentService {
       })
       .execute();
 
-    // Re-read payment to ensure transactionComments is persisted
     const updatedPaymentRoot = await projectApiRoot
       .payments()
       .withId({ ID: ctPayment.id })
@@ -900,7 +927,6 @@ export class NovalnetPaymentService extends AbstractPaymentService {
     const paymentComment =
       updatedTransaction?.custom?.fields?.transactionComments ??
       transactionCommentsText;
-    // Store for later Order sync (because Order does NOT exist yet)
     await customObjectService.upsert(
       "nn-private-data",
       `${ctPayment.id}-${pspReference}`,
@@ -917,7 +943,6 @@ export class NovalnetPaymentService extends AbstractPaymentService {
       },
     );
 
-    // Never try to read Order here — it does not exist yet
     return {
       paymentReference: ctPayment.id,
       novalnetResponse: parsedResponse,
@@ -999,7 +1024,7 @@ export class NovalnetPaymentService extends AbstractPaymentService {
   }
 
   private async syncPaymentToOrder(paymentId: string, pspReference: string) {
-    // 1. Wait for Order to exist
+
     const order = await this.waitForOrderByPayment(paymentId);
 
     if (!order) {
@@ -1010,7 +1035,6 @@ export class NovalnetPaymentService extends AbstractPaymentService {
       return;
     }
 
-    // 2. Load Payment
     const paymentRes = await projectApiRoot
       .payments()
       .withId({ ID: paymentId })
@@ -1034,7 +1058,6 @@ export class NovalnetPaymentService extends AbstractPaymentService {
     const comment = tx.custom?.fields?.transactionComments;
     if (!comment) return;
 
-    // 3. Write into Order
     await projectApiRoot
       .orders()
       .withId({ ID: order.id })
@@ -1065,17 +1088,20 @@ export class NovalnetPaymentService extends AbstractPaymentService {
     });
   }
 
-  private getTransactionState(status?: string): "Initial" | "Pending" | "Success" | "Canceled" | "Failure" {
-    switch (status) {
+  private getTransactionStatus(status?: string): {
+    state: "Initial" | "Pending" | "Success" | "Failure";
+    transactionType: "Authorization" | "Charge" | "CancelAuthorization";
+  } {
+    switch (String(status ?? "").toUpperCase()) {
       case "PENDING":
       case "ON_HOLD":
-        return "Pending";
+        return { state: "Pending", transactionType: "Authorization" };
       case "CONFIRMED":
-        return "Success";
+        return { state: "Success", transactionType: "Charge" };
       case "CANCELLED":
-        return "Canceled";
+        return { state: "Failure", transactionType: "CancelAuthorization" };
       default:
-        return "Failure";
+        return { state: "Failure", transactionType: "Authorization" };
     }
   }
 
@@ -1123,7 +1149,7 @@ export class NovalnetPaymentService extends AbstractPaymentService {
     pspReference: string;
     transactionComments: string;
     statusCode?: string;
-    state?: "Initial" | "Pending" | "Success" | "Canceled" | "Failure" | "Paid";
+    state?: "Initial" | "Pending" | "Success" | "Failure";
     appendComments?: boolean;
     setCustomType?: boolean;
     setStatusInterfaceCode?: boolean;
@@ -1148,11 +1174,14 @@ export class NovalnetPaymentService extends AbstractPaymentService {
 
     const actions: PaymentUpdateAction[] = [];
 
-    if (setCustomType) {
+    if (setCustomType && !tx.custom?.type) {
       actions.push({
         action: "setTransactionCustomType",
         transactionId: tx.id,
-        type: { key: "novalnet-custom-field", typeId: "type" },
+        type: {
+          key: "novalnet-custom-field",
+          typeId: "type",
+        },
       });
     }
 
@@ -1196,22 +1225,37 @@ export class NovalnetPaymentService extends AbstractPaymentService {
   }: {
     webhook: any;
     transactionComments: string;
-    state?: "Initial" | "Pending" | "Success" | "Canceled" | "Failure";
+    state?: "Initial" | "Pending" | "Success" | "Failure";
     setStatusInterfaceCode?: boolean;
     changeTransactionState?: boolean;
   }) {
     const paymentId = webhook?.custom?.inputval1;
     const pspReference = webhook?.custom?.inputval2;
 
+    const status = String(webhook?.transaction?.status ?? "").toUpperCase();
+    const mapped = this.getTransactionStatus(status);
+    const effectiveState = state ?? mapped.state;
+
     await this.updatePaymentTransaction({
       paymentId,
       pspReference,
       transactionComments,
       statusCode: webhook?.transaction?.status_code,
-      state,
+      state: effectiveState,
       setStatusInterfaceCode,
       changeTransactionState,
     });
+
+    if (changeTransactionState) {
+      await this.addSettlementTransactionIfRequired({
+        paymentId,
+        pspReference,
+        amount: webhook?.transaction?.amount,
+        currency: webhook?.transaction?.currency,
+        transactionType: mapped.transactionType,
+        status,
+      });
+    }
 
     await this.syncPaymentToOrder(paymentId, pspReference);
     return transactionComments;
@@ -1293,7 +1337,7 @@ export class NovalnetPaymentService extends AbstractPaymentService {
     return this.processWebhookTransaction({
       webhook,
       transactionComments,
-      state: "Success",
+      state: this.getTransactionStatus(webhook?.transaction?.status).state,
       setStatusInterfaceCode: true,
     });
   }
@@ -1306,7 +1350,7 @@ export class NovalnetPaymentService extends AbstractPaymentService {
     return this.processWebhookTransaction({
       webhook,
       transactionComments,
-      state: this.getTransactionState(webhook?.transaction?.status),
+      state: this.getTransactionStatus(webhook?.transaction?.status).state,
       setStatusInterfaceCode: true,
     });
   }
@@ -1319,7 +1363,7 @@ export class NovalnetPaymentService extends AbstractPaymentService {
     return this.processWebhookTransaction({
       webhook,
       transactionComments,
-      state: this.getTransactionState(webhook?.transaction?.status),
+      state: this.getTransactionStatus(webhook?.transaction?.status).state,
       setStatusInterfaceCode: true,
     });
   }
@@ -1435,7 +1479,7 @@ export class NovalnetPaymentService extends AbstractPaymentService {
     await this.processWebhookTransaction({
       webhook,
       transactionComments,
-      state: this.getTransactionState(webhook?.transaction?.status),
+      state: this.getTransactionStatus(webhook?.transaction?.status).state,
       setStatusInterfaceCode: true,
     });
     return transactionComments;
@@ -1462,7 +1506,7 @@ export class NovalnetPaymentService extends AbstractPaymentService {
     return this.processWebhookTransaction({
       webhook,
       transactionComments,
-      state: this.getTransactionState(webhook?.transaction?.status),
+      state: this.getTransactionStatus(webhook?.transaction?.status).state,
       setStatusInterfaceCode: true,
     });
   }
@@ -1488,7 +1532,7 @@ export class NovalnetPaymentService extends AbstractPaymentService {
     return this.processWebhookTransaction({
       webhook,
       transactionComments,
-      state: this.getTransactionState(webhook?.transaction?.status),
+      state: this.getTransactionStatus(webhook?.transaction?.status).state,
       setStatusInterfaceCode: true,
     });
   }
@@ -1642,7 +1686,7 @@ export class NovalnetPaymentService extends AbstractPaymentService {
   public async updatePaymentStatusByPaymentId(
     paymentId: string,
     transactionId: string,
-    newState: "Initial" | "Pending" | "Success" | "Failure" | "Paid",
+    newState: "Initial" | "Pending" | "Success" | "Failure",
   ) {
     const paymentRes = await projectApiRoot
       .payments()
@@ -1792,11 +1836,6 @@ public async createRedirectPayment(
     getPaymentInterfaceFromContext() ||
     "mock";
 
-  /**
-   * --------------------------------------------------
-   * Create commercetools Payment
-   * --------------------------------------------------
-   */
   const ctPayment =
     await this.ctPaymentService.createPayment({
       amountPlanned: paymentAmount,
@@ -1828,19 +1867,9 @@ public async createRedirectPayment(
     paymentId: ctPayment.id,
   });
 
-  /**
-   * --------------------------------------------------
-   * Create PSP reference
-   * --------------------------------------------------
-   */
   const pspReference =
     randomUUID().toString();
 
-  /**
-   * --------------------------------------------------
-   * Create pending transaction
-   * --------------------------------------------------
-   */
   const transactionComments =
     `Novalnet Transaction ID: N/A\n` +
     `Payment Type: N/A\n` +
@@ -1879,11 +1908,6 @@ public async createRedirectPayment(
     } as unknown as any,
   } as any);
 
-  /**
-   * --------------------------------------------------
-   * Customer name
-   * --------------------------------------------------
-   */
   const orderNumber =
     getFutureOrderNumberFromContext() ??
     "";
@@ -1939,11 +1963,6 @@ public async createRedirectPayment(
       ),
     });
 
-  /**
-   * --------------------------------------------------
-   * Novalnet transaction
-   * --------------------------------------------------
-   */
   const transaction: Record<
     string,
     any
@@ -1980,17 +1999,6 @@ public async createRedirectPayment(
       orderNumber,
   };
 
-  /**
-   * --------------------------------------------------
-   * CREDIT CARD
-   * --------------------------------------------------
-   *
-   * For credit card redirect payment,
-   * pan_hash and unique_id are mandatory.
-   *
-   * This is the same payment_data used
-   * by createDirectPayment().
-   */
   if (
     type.toUpperCase() ===
     "CREDITCARD"
@@ -2031,11 +2039,6 @@ public async createRedirectPayment(
     };
   }
 
-  /**
-   * --------------------------------------------------
-   * Novalnet Payload
-   * --------------------------------------------------
-   */
   const novalnetPayload = {
     merchant: {
       signature:
@@ -2149,11 +2152,6 @@ public async createRedirectPayment(
     },
   };
 
-  /**
-   * --------------------------------------------------
-   * Call Novalnet
-   * --------------------------------------------------
-   */
   let parsedResponse: any = {};
 
   try {
@@ -2172,11 +2170,6 @@ public async createRedirectPayment(
     );
   }
 
-  /**
-   * --------------------------------------------------
-   * Validate Novalnet response
-   * --------------------------------------------------
-   */
   if (
     parsedResponse?.result
       ?.status !== "SUCCESS"
@@ -2207,11 +2200,6 @@ public async createRedirectPayment(
     );
   }
 
-  /**
-   * --------------------------------------------------
-   * Get redirect URL
-   * --------------------------------------------------
-   */
   const redirectUrl =
     parsedResponse
       ?.result
@@ -2240,11 +2228,6 @@ public async createRedirectPayment(
     );
   }
 
-  /**
-   * --------------------------------------------------
-   * Return redirect URL to frontend
-   * --------------------------------------------------
-   */
   return {
     paymentReference:
       ctPaymentId,
@@ -2412,6 +2395,80 @@ private async createPendingPaymentTransaction({
     },
   } as any);
 }
+
+  private async addSettlementTransactionIfRequired({
+    paymentId,
+    pspReference,
+    amount,
+    currency,
+    transactionType,
+    status,
+  }: {
+    paymentId: string;
+    pspReference: string;
+    amount?: string | number;
+    currency?: string;
+    transactionType: "Authorization" | "Charge" | "CancelAuthorization";
+    status: string;
+  }) {
+    if (transactionType === "Authorization") return;
+
+    const paymentRes = await projectApiRoot
+      .payments()
+      .withId({ ID: paymentId })
+      .get()
+      .execute();
+
+    const payment = paymentRes.body;
+    const interactionId = `${pspReference}-${transactionType}`;
+    const alreadyAdded = payment.transactions?.some(
+      (transaction) => transaction.interactionId === interactionId,
+    );
+
+    if (alreadyAdded) {
+      log.info("Settlement transaction already exists", {
+        paymentId,
+        transactionType,
+        interactionId,
+      });
+      return;
+    }
+
+    const transactionAmount = amount != null
+      ? {
+          centAmount: Number(amount),
+          currencyCode: String(currency ?? payment.amountPlanned.currencyCode),
+        }
+      : payment.amountPlanned;
+
+    await projectApiRoot
+      .payments()
+      .withId({ ID: paymentId })
+      .post({
+        body: {
+          version: payment.version,
+          actions: [
+            {
+              action: "addTransaction",
+              transaction: {
+                type: transactionType,
+                amount: transactionAmount,
+                interactionId,
+                state: "Success",
+              },
+            },
+          ],
+        },
+      })
+      .execute();
+
+    log.info("Settlement transaction added", {
+      paymentId,
+      pspReference,
+      transactionType,
+      status,
+    });
+  }
 
   public splitStreetByComma(street?: string): {
     streetName: string;
