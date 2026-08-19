@@ -40,15 +40,46 @@ export const paymentRoutes = async (
       },
     },
     async (request, reply) => {
-      const resp = await opts.paymentService.createDirectPayment({
-        data: request.body,
-      });
-      if (resp?.transactionStatus == "FAILURE") {
+      try {
+        log.info("Direct payment request received", {
+          paymentMethod: request.body?.paymentMethod?.type,
+          paymentOutcome: request.body?.paymentOutcome,
+        });
+
+        const resp = await opts.paymentService.createDirectPayment({
+          data: request.body,
+        });
+
+        log.info("Direct payment response", {
+          transactionStatus: resp?.transactionStatus,
+          paymentReference: resp?.paymentReference,
+        });
+
+        if (resp?.transactionStatus === "FAILURE") {
+          log.error("Direct payment failed", {
+            transactionStatus: resp?.transactionStatus,
+            transactionStatusText: resp?.transactionStatusText,
+          });
+
         const baseUrl = request.body.path + "/checkout";
         return reply.code(302).redirect(baseUrl);
+
+        }
+
+        return reply.code(200).send(resp);
+      } catch (error) {
+        log.error("Direct payment processing error", {
+          message: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined,
+        });
+
+        return reply.code(500).send({
+          paymentReference: "",
+          transactionStatus: "FAILURE",
+          transactionStatusText: "Payment processing failed",
+        });
       }
-      return reply.status(200).send(resp);
-    },
+    }
   );
 
   fastify.post<{
@@ -68,8 +99,16 @@ export const paymentRoutes = async (
     },
     async (request, reply) => {
       try {
+          log.info("Redirect payment request received", {
+          paymentMethod: request.body?.paymentMethod?.type,
+          paymentOutcome: request.body?.paymentOutcome,
+        });
         const resp = await opts.paymentService.createRedirectPayment({
           data: request.body,
+        });
+        log.info("Redirect payment response", {
+          transactionStatus: resp?.transactionStatus,
+          paymentReference: resp?.paymentReference,
         });
         return reply.status(200).send(resp);
       } catch (error) {
@@ -229,9 +268,21 @@ export const paymentRoutes = async (
     }
   });
 
-  fastify.post("/getconfig", async (req, reply) => {
-    const clientKey = String(getConfig()?.novalnetClientkey ?? "");
-    return reply.code(200).send({ paymentReference: clientKey });
+  fastify.post("/getCreditcardConfig", async (req, reply) => {
+    const config = getConfig();
+  
+    const clientKey = String(
+      config?.novalnetClientkey ?? "",
+    );
+  
+    const inline = String(
+      config?.novalnet_CREDITCARD_DisplayInline ?? "0",
+    );
+  
+    return reply.code(200).send({
+      paymentReference: clientKey,
+      inline,
+    });
   });
 
   fastify.post<{ Body: PaymentRequestSchemaDTO }>(
