@@ -611,9 +611,7 @@ public async failureResponse({ data }: { data: any }) {
     let birthDate: string | undefined;
     
     const rawBirthDate = String(
-      request.data.paymentMethod?.birthDate ??
-      request.data.paymentMethod?.birthdate ??
-      ""
+      request.data.paymentMethod?.birthdate ?? ""
     ).trim();
     
     birthDate = this.formatBirthDateToYMD(rawBirthDate);
@@ -623,9 +621,9 @@ public async failureResponse({ data }: { data: any }) {
       String(request.data.paymentMethod.type).toUpperCase() === "GUARANTEED_DIRECT_DEBIT_SEPA"
     ) {
       transaction.payment_data = {
-        account_holder: String(requestData.paymentMethod.accHolder),
-        iban: String(requestData.paymentMethod.iban),
-        bic: String(requestData.paymentMethod.bic ?? ""),
+        account_holder: String(request.data.paymentMethod.accHolder),
+        iban: String(request.data.paymentMethod.iban),
+        bic: String(request.data.paymentMethod.bic ?? ""),
       };
     }
     
