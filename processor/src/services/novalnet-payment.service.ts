@@ -614,7 +614,9 @@ public async failureResponse({ data }: { data: any }) {
       request.data.paymentMethod?.birthdate ?? ""
     ).trim();
     
-    birthDate = this.formatBirthDateToYMD(rawBirthDate);
+    const birthDate = rawBirthDate
+      ? this.formatBirthDateToYMD(rawBirthDate)
+      : undefined;
 
     if (
       String(request.data.paymentMethod.type).toUpperCase() === "DIRECT_DEBIT_SEPA" ||
