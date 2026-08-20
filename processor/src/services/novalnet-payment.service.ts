@@ -614,7 +614,7 @@ public async failureResponse({ data }: { data: any }) {
       request.data.paymentMethod?.birthdate ?? ""
     ).trim();
     
-    const birthDate = rawBirthDate
+    birthDate = rawBirthDate
       ? this.formatBirthDateToYMD(rawBirthDate)
       : undefined;
 
