@@ -607,34 +607,28 @@ public async failureResponse({ data }: { data: any }) {
     }
 
     const company = billingAddress?.additionalAddressInfo ?? "";
-
+    
     let birthDate: string | undefined;
-
-    if (!company) {
-      const rawBirthDate = request.data.paymentMethod?.birthdate;
-      if (typeof rawBirthDate === "string" && rawBirthDate.trim() !== "") {
-        birthDate = this.formatBirthDateToYMD(rawBirthDate);
-      }
-    }
+    
+    const rawBirthDate = String(
+      request.data.paymentMethod?.birthDate ??
+      request.data.paymentMethod?.birthdate ??
+      ""
+    ).trim();
+    
+    birthDate = this.formatBirthDateToYMD(rawBirthDate);
 
     if (
-      String(request.data.paymentMethod.type).toUpperCase() ===
-      "DIRECT_DEBIT_SEPA"
+      String(request.data.paymentMethod.type).toUpperCase() === "DIRECT_DEBIT_SEPA" ||
+      String(request.data.paymentMethod.type).toUpperCase() === "GUARANTEED_DIRECT_DEBIT_SEPA"
     ) {
       transaction.payment_data = {
-        account_holder: String(request.data.paymentMethod.accHolder),
-        iban: String(request.data.paymentMethod.iban),
+        account_holder: String(requestData.paymentMethod.accHolder),
+        iban: String(requestData.paymentMethod.iban),
+        bic: String(requestData.paymentMethod.bic ?? ""),
       };
     }
-    if (
-      String(request.data.paymentMethod.type).toUpperCase() ===
-        "DIRECT_DEBIT_SEPA" &&
-      String(request.data.paymentMethod.bic) != ""
-    ) {
-      transaction.payment_data = {
-        bic: String(request.data.paymentMethod.bic),
-      };
-    }
+    
     if (
       String(request.data.paymentMethod.type).toUpperCase() ===
       "DIRECT_DEBIT_ACH"
@@ -985,18 +979,34 @@ public async failureResponse({ data }: { data: any }) {
     ];
   }
 
-  formatBirthDateToYMD(dateStr: string): string | undefined {
-    const parts = dateStr.split("-");
-    if (parts.length !== 3) {
-      return undefined;
+  private formatBirthDateToYMD(dateStr: string): string | undefined {
+    if (!dateStr) return undefined;
+  
+    const value = dateStr.trim();
+  
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      return value;
     }
-
-    const [day, month, year] = parts;
-    if (!day || !month || !year) {
-      return undefined;
+  
+    let match = value.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+    if (match) {
+      const [, day, month, year] = match;
+      return `${year}-${month}-${day}`;
     }
-
-    return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+  
+    match = value.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+    if (match) {
+      const [, day, month, year] = match;
+      return `${year}-${month}-${day}`;
+    }
+  
+    match = value.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    if (match) {
+      const [, day, month, year] = match;
+      return `${year}-${month}-${day}`;
+    }
+    
+    return undefined;
   }
 
   public async waitForOrderByPayment(
