@@ -1,209 +1,416 @@
 import {
-    ComponentOptions,
-    PaymentComponent,
-    PaymentComponentBuilder,
-    PaymentMethod
-  } from '../../../payment-enabler/payment-enabler';
-  import { BaseComponent } from "../../base";
-  import styles from '../../../style/style.module.scss';
-  import buttonStyles from "../../../style/button.module.scss";
-  import {
-    PaymentOutcome,
-    PaymentRequestSchemaDTO,
-  } from "../../../dtos/novalnet-payment.dto";
-  import { BaseOptions } from "../../../payment-enabler/novalnet-payment-enabler";
-  
-  export class GuaranteedInvoiceBuilder implements PaymentComponentBuilder {
-    public componentHasSubmit = true;
-    constructor(private baseOptions: BaseOptions) {}
-  
-    build(config: ComponentOptions): PaymentComponent {
-      return new GuaranteedInvoice(this.baseOptions, config);
+  ComponentOptions,
+  PaymentComponent,
+  PaymentComponentBuilder,
+  PaymentMethod
+} from '../../../payment-enabler/payment-enabler';
+import { BaseComponent } from "../../base";
+import styles from '../../../style/style.module.scss';
+import buttonStyles from "../../../style/button.module.scss";
+import {
+  PaymentOutcome,
+  PaymentRequestSchemaDTO,
+} from "../../../dtos/novalnet-payment.dto";
+import { BaseOptions } from "../../../payment-enabler/novalnet-payment-enabler";
+
+declare global {
+  interface Window {
+    NovalnetUtility?: {
+      setBirthDateFormat: (format: string) => void;
+      isNumericBirthdate: (
+        input: HTMLInputElement,
+        event: KeyboardEvent
+      ) => boolean | void;
+      validateDateFormat: (value: string) => boolean;
+    };
+  }
+}
+
+export class GuaranteedInvoiceBuilder
+  implements PaymentComponentBuilder {
+
+  public componentHasSubmit = true;
+
+  constructor(
+    private baseOptions: BaseOptions
+  ) {}
+
+  build(
+    config: ComponentOptions
+  ): PaymentComponent {
+
+    return new GuaranteedInvoice(
+      this.baseOptions,
+      config
+    );
+  }
+}
+
+export class GuaranteedInvoice extends BaseComponent {
+
+  private showPayButton: boolean;
+
+  constructor(
+    baseOptions: BaseOptions,
+    componentOptions: ComponentOptions
+  ) {
+
+    super(
+      PaymentMethod.GuaranteedInvoice,
+      baseOptions,
+      componentOptions
+    );
+
+    this.showPayButton =
+      componentOptions?.showPayButton ?? false;
+  }
+
+  async mount(selector: string) {
+
+    const safeSelector =
+      '#' + CSS.escape(
+        selector.substring(1)
+      );
+
+    const container =
+      document.querySelector(
+        safeSelector
+      );
+
+    if (!container) {
+
+      console.error(
+        "[Guaranteed Invoice] Container not found:",
+        safeSelector
+      );
+
+      return;
+    }
+
+    await this.loadNovalnetUtility();
+
+    container.insertAdjacentHTML(
+      "afterbegin",
+      this._getTemplate()
+    );
+
+    setTimeout(() => {
+
+      const paymentLabel =
+        container.querySelector("label");
+
+      if (
+        paymentLabel &&
+        paymentLabel.textContent
+          ?.toLowerCase()
+          .includes("guaranteed")
+      ) {
+
+        paymentLabel.textContent =
+          "Invoice with payment guarantee";
+      }
+
+      this.initializeDobHandling();
+
+    }, 100);
+
+    if (this.showPayButton) {
+
+      document
+        .querySelector(
+          "#GuaranteedInvoiceForm-paymentButton"
+        )
+        ?.addEventListener(
+          "click",
+          (e) => {
+
+            e.preventDefault();
+
+            this.submit();
+          }
+        );
     }
   }
-  
-  export class GuaranteedInvoice extends BaseComponent {
-    private showPayButton: boolean;
-  
-    constructor(baseOptions: BaseOptions, componentOptions: ComponentOptions) {
-      super(PaymentMethod.GuaranteedInvoice, baseOptions, componentOptions);
-      this.showPayButton = componentOptions?.showPayButton ?? false;
-    }
-    
-    mount(selector: string) {
 
-      /**
-       * Fix commercetools selector issue
-       */
-      const safeSelector =
-        '#' + CSS.escape(
-          selector.substring(1)
+  private async loadNovalnetUtility(): Promise<void> {
+
+    if (window.NovalnetUtility) {
+
+      return;
+    }
+
+    await new Promise<void>((resolve, reject) => {
+
+      const script =
+        document.createElement("script");
+
+      script.src =
+        "https://cdn.novalnet.de/js/v2/NovalnetUtility-1.1.2.js";
+
+      script.async = true;
+
+      script.onload = () => {
+
+        resolve();
+      };
+
+      script.onerror = reject;
+
+      document.head.appendChild(script);
+    });
+  }
+
+  private initializeDobHandling() {
+
+    const dobInput =
+      document.getElementById(
+        "nn_birthdate"
+      ) as HTMLInputElement | null;
+
+    if (!dobInput || !window.NovalnetUtility) {
+
+      console.warn(
+        "[Guaranteed Invoice] DOB initialization skipped"
+      );
+
+      return;
+    }
+
+    window.NovalnetUtility.setBirthDateFormat(
+      "DD.MM.YYYY"
+    );
+
+    dobInput.addEventListener(
+      "keydown",
+      (event) => {
+
+        window.NovalnetUtility?.isNumericBirthdate(
+          dobInput,
+          event as KeyboardEvent
         );
-  
-      const container =
-        document.querySelector(
-          safeSelector
+      }
+    );
+
+    dobInput.addEventListener(
+      "blur",
+      () => {
+
+        const valid =
+          window.NovalnetUtility?.validateDateFormat(
+            dobInput.value
+          );
+
+        const error =
+          document.getElementById(
+            "nn_birthdate_error"
+          );
+
+        if (error) {
+
+          error.style.display =
+            valid ? "none" : "block";
+        }
+      }
+    );
+  }
+
+  async submit() {
+
+    this.sdk.init({
+      environment: this.environment
+    });
+
+    const pathLocale =
+      window.location.pathname.split("/")[1];
+
+    const baseSiteUrl =
+      window.location.origin;
+
+    try {
+
+      const birthdate =
+        (
+          document.getElementById(
+            "nn_birthdate"
+          ) as HTMLInputElement
+        )?.value.trim() ?? "";
+
+      if (!birthdate) {
+
+        this.onError(
+          "Please enter Date of Birth."
         );
-  
-      if (!container) {
-  
-        console.error(
-          'Container not found:',
-          safeSelector
-        );
-  
+
         return;
       }
-  
-      /**
-       * Same behavior as iDEAL
-       * Prevent radio button removal
-       */
-      container.insertAdjacentHTML(
-        "afterbegin",
-        this._getTemplate()
-      );
-  
-      /**
-       * Update only current payment label
-       */
-      setTimeout(() => {
-  
-        const paymentLabel =
-          container.querySelector(
-            'label'
-          );
-  
-        if (
-          paymentLabel &&
-          paymentLabel.textContent
-            ?.toLowerCase()
-            .includes('GuaranteedInvoice')
-        ) {
-  
-          paymentLabel.textContent =
-            'Invoice with payment guarantee';
-        }
-  
-      }, 100);
-  
-      /**
-       * Bind button event
-       */
-      if (this.showPayButton) {
-  
-        const button =
-          document.querySelector(
-            "#GuaranteedInvoiceForm-paymentButton"
-          );
-  
-        if (button) {
-  
-          button.addEventListener(
-            "click",
-            (e) => {
-  
-              e.preventDefault();
-  
-              this.submit();
-            }
-          );
-        }
-      }
-    }
 
-    async submit() {
-      // Here we would call the SDK to sumbit the payment
-      this.sdk.init({ environment: this.environment });
-      const pathLocale = window.location.pathname.split("/")[1];
-      const url = new URL(window.location.href);
-      const baseSiteUrl = url.origin;
-  
-      try {
-        const birthdateInput = document.getElementById("nn_birthdate") as HTMLInputElement;
-        const birthdate = birthdateInput?.value.trim() ?? "";
-        const requestData: PaymentRequestSchemaDTO = {
-          paymentMethod: {
-            type: "GUARANTEED_INVOICE",
-            birthdate: birthdate
-          },
-          paymentOutcome: PaymentOutcome.AUTHORIZED,
-        };
-       
-        const response = await fetch(this.processorUrl + "/directPayment", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-Session-Id": this.sessionId,
-          },
-          body: JSON.stringify(requestData),
+      const valid =
+        window.NovalnetUtility?.validateDateFormat(
+          birthdate
+        );
+
+      if (!valid) {
+
+        this.onError(
+          "Please enter a valid Date of Birth."
+        );
+
+        return;
+      }
+
+      const requestData:
+        PaymentRequestSchemaDTO = {
+
+        paymentMethod: {
+
+          type:
+            "GUARANTEED_INVOICE",
+
+          birthdate,
+        },
+
+        paymentOutcome:
+          PaymentOutcome.AUTHORIZED,
+
+        lang:
+          pathLocale ?? "de",
+
+        path:
+          baseSiteUrl,
+      };
+
+      const response =
+        await fetch(
+          this.processorUrl +
+          "/directPayment",
+          {
+
+            method: "POST",
+
+            headers: {
+
+              "Content-Type":
+                "application/json",
+
+              "X-Session-Id":
+                this.sessionId,
+            },
+
+            body:
+              JSON.stringify(
+                requestData
+              ),
+          }
+        );
+
+      if (!response.ok) {
+
+        const errorText =
+          await response.text();
+
+        console.error(
+          "[Guaranteed Invoice] HTTP Error",
+          errorText
+        );
+
+        throw new Error(
+          `HTTP ${response.status}`
+        );
+      }
+
+      const data =
+        await response.json();
+
+      if (data?.paymentReference) {
+
+        this.onComplete?.({
+
+          isSuccess: true,
+
+          paymentReference:
+            data.paymentReference,
         });
-        const data = await response.json();
-        if (data.paymentReference) {
-          this.onComplete &&
-            this.onComplete({
-              isSuccess: true,
-              paymentReference: data.paymentReference,
-            });
-        } else {
-          this.onError("Some error occurred. Please try again.");
-        }
-  
-      } catch (e) {
-        this.onError("Some error occurred. Please try again.");
+
+        return;
       }
-    }
-  
-    private _getTemplate() {
-    const payButton = this.showPayButton
-        ? `
-      <div class="${styles.wrapper}">
-        <p>Pay easily with GuaranteedInvoice and transfer the shopping amount within the specified date.</p>
-        <button class="${buttonStyles.button} ${buttonStyles.fullWidth} ${styles.submitButton}" id="GuaranteedInvoiceForm-paymentButton">Pay</button>
-      </div>
-      `
-        : "";
-        return `
-        <div style="width:100%; display:flex; flex-direction:column;">
-          <script type="text/javascript" src="https://cdn.novalnet.de/js/v2/NovalnetUtility.js"></script>
 
-            <!-- Birthdate -->
-            <div style="display:flex; flex-direction:column; width:100%;">
-            <label for="nn_birthdate"
-                style="font-size:14px; font-weight:600; color:#333; margin-bottom:6px;"
-            >
-                Birthdate (DD-MM-YYYY) <span style="color:red;">*</span>
-            </label>
+      this.onError(
+        data?.transactionStatusText ||
+        "Some error occurred. Please try again."
+      );
 
-            <input
-                type="text"
-                id="nn_birthdate"
-                name="nn_birthdate"
-                placeholder="DD-MM-YYYY"
-                maxlength="10"
-                style="
-                padding:12px 14px;
-                border:1.5px solid #d4d4d4;
-                border-radius:6px;
-                font-size:15px;
-                transition:all 0.2s ease-in-out;
-                "
-            />
+    } catch (e) {
 
-            <span
-                id="nn_birthdate_error"
-                style="
-                display:none;
-                margin-top:4px;
-                font-size:12px;
-                color:#d70000;
-                "
-            >Invalid birthdate</span>
-            </div> 
-        </form>
-        </div>
-      `;     
+      console.error(
+        "[Guaranteed Invoice] Submit error",
+        e
+      );
 
+      this.onError(
+        "Some error occurred. Please try again."
+      );
     }
   }
-  
+
+  private _getTemplate() {
+
+    const payButton =
+      this.showPayButton
+        ? `
+          <button
+            class="${buttonStyles.button} ${buttonStyles.fullWidth} ${styles.submitButton}"
+            id="GuaranteedInvoiceForm-paymentButton"
+            type="button"
+          >
+            Pay Now
+          </button>
+        `
+        : "";
+
+    return `
+      <div
+        class="${styles.wrapper}"
+        style="width:100%;display:flex;flex-direction:column;gap:20px;"
+      >
+
+        <p>
+          Pay easily with Invoice with payment guarantee.
+        </p>
+
+        <div
+          style="display:flex;flex-direction:column;width:100%;"
+        >
+
+          <label
+            for="nn_birthdate"
+            style="font-size:14px;font-weight:600;color:#333;margin-bottom:6px;"
+          >
+            Date of Birth (DD.MM.YYYY)
+            <span style="color:red;">*</span>
+          </label>
+
+          <input
+            type="text"
+            id="nn_birthdate"
+            name="nn_birthdate"
+            placeholder="DD.MM.YYYY"
+            maxlength="10"
+            autocomplete="bday"
+            style="padding:12px 14px;border:1px solid #d4d4d4;border-radius:6px;font-size:15px;"
+          />
+
+          <span
+            id="nn_birthdate_error"
+            style="display:none;margin-top:4px;font-size:12px;color:#d70000;"
+          >
+            Invalid Date of Birth
+          </span>
+
+        </div>
+
+        ${payButton}
+
+      </div>
+    `;
+  }
+}
