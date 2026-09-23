@@ -1,157 +1,327 @@
-# connect-payment-integration-template
+# Novalnet Payment Connector for commercetools
 
+The **Novalnet Payment Connector** is a commercetools Connect application that integrates the Novalnet Payment Gateway with **commercetools Checkout**. It supports direct and redirect payment methods, authorization and payment flows, guaranteed payment validation, webhook processing, and automatic synchronization of Payments and Orders throughout the payment lifecycle.
 
-This repository provides a [connect](https://docs.commercetools.com/connect) template for payment integration connector. This boilerplate code acts as a starting point for integration with external payment service provider.
-=======
-This repository provides a [connect](https://docs.commercetools.com/connect) template for payment integration connector. This boilerplate code acts as a starting point for integration with external payment service provider test test.
+The connector is built using the **commercetools Connect Payment SDK** and follows commercetools Connect deployment standards.
 
+## Features
 
-## Template Features
+* Direct and Redirect payment flows
+* Credit Card 3D Secure support
+* Authorization and Payment modes
+* Configurable minimum amount for authorization
+* Guaranteed payment eligibility validation
+* Optional fallback to non-guaranteed payments
+* Webhook processing for major payment events
+* Automatic OrderState and PaymentState synchronization
+* Transaction comment synchronization
+* English and German transaction comments
+* commercetools Connect compatible deployment
 
-- Typescript language supported.
-- Uses Fastify as web server framework.
-- Uses [commercetools SDK](https://docs.commercetools.com/sdk/js-sdk-getting-started) for the commercetools-specific communication.
-- Uses [connect payment SDK](https://github.com/commercetools/connect-payments-sdk) to manage request context, sessions and JWT authentication.
-- Includes local development utilities in npm commands to build, start, test, lint & prettify code.
+## Supported Payment Methods
 
-## Prerequisite
+| Payment Method               | Flow              |
+| ---------------------------- | ----------------- |
+| Credit Card                  | Direct / Redirect |
+| Direct Debit SEPA            | Direct            |
+| Guaranteed Direct Debit SEPA | Direct            |
+| Direct Debit ACH             | Direct            |
+| Invoice                      | Direct            |
+| Guaranteed Invoice           | Direct            |
+| Prepayment                   | Direct            |
+| PayPal                       | Redirect          |
+| Online Bank Transfer         | Redirect          |
+| Przelewy24                   | Redirect          |
+| EPS                          | Redirect          |
+| Bancontact                   | Redirect          |
+| Multibanco                   | Redirect          |
+| Alipay                       | Redirect          |
+| WeChat Pay                   | Redirect          |
+| Trustly                      | Redirect          |
+| TWINT                        | Redirect          |
+| PostFinance                  | Redirect          |
+| PostFinance Card             | Redirect          |
+| MB WAY                       | Redirect          |
+| BLIK                         | Redirect          |
 
-#### 1. commercetools composable commerce API client
-
-Users are expected to create API client responsible for payment management in composable commerce project. Details of the API client are taken as input as environment variables/ configuration for connect such as `CTP_PROJECT_KEY` , `CTP_CLIENT_ID`, `CTP_CLIENT_SECRET`. For details, please read [Deployment Configuration](./README.md#deployment-configuration).
-In addition, please make sure the API client should have enough scope to be able to manage payment. For details, please refer to [Running Application](./processor/README.md#running-application)
-
-#### 2. various URLs from commercetools composable commerce
-
-Various URLs from commercetools platform are required to be configured so that the connect application can handle session and authentication process for endpoints.
-Their values are taken as input as environment variables/ configuration for connect with variable names `CTP_API_URL`, `CTP_AUTH_URL` and `CTP_SESSION_URL`.
-
-## Getting started
-
-The template contains two modules :
-
-- Enabler: Acts as a wrapper implementation in which frontend components from PSPs embedded. It gives control to checkout product on when and how to load the connector frontend based on business configuration. In cases connector is used directly and not through Checkout product, the connector library can be loaded directly on frontend than the PSP one.
-- Processor : Acts as backend services which is middleware to 3rd party PSPs to be responsible for managing transactions with PSPs and updating payment entity in composable commerce. `connect-payment-sdk` will be offered to be used in connector to manage request context, sessions and other tools necessary to transact.
-
-Regarding the development of processor module, please refer to the following documentations:
-
-### Currencies
-
-A special note regarding the usage of currencies and working with them. commercetools provides monetary values in cent amounts which adheres to the <https://en.wikipedia.org/wiki/ISO_4217> standard.
-
-This means that for the currency `EUR` the minor units will be expressed with fraction digits of 2. I.e. a value of 1 euro and 50 cents will be expressed as `150`. Some currencies have 0 or even 4 fraction digits.
-
-It's important to note that individual PSP could differ from this standard and/or require special attention when passing data between the connector and psp. So it's important to convert properly on the input and output layer when interacting with PSP.
-
-commercetools provides the library [connect-payments-sdk](https://github.com/commercetools/connect-payments-sdk) which includes various utility function to help with these conversions.
-
-- [Development of Processor](./processor/README.md)
-
-#### 1. Develop your specific needs
-
-To proceed payment operations via external PSPs, users need to extend this connector with the following task
-
-- API communication: Implementation to communicate between this connector application and the external system using libraries provided by PSPs. Please remember that the payment requests might not be sent to PSPs successfully in a single attempt. It should have needed retry and recovery mechanism.
-
-#### 2. Register as connector in commercetools Connect
-
-Follow guidelines [here](https://docs.commercetools.com/connect/getting-started) to register the connector for public/private use.
-
-## Deployment Configuration
-
-In order to deploy your customized connector application on commercetools Connect, it needs to be published. For details, please refer to [documentation about commercetools Connect](https://docs.commercetools.com/connect/concepts)
-In addition, in order to support connect, the tax integration connector template has a folder structure as listed below
+## Project Structure
 
 ```
-├── enabler
-│   ├── src
-│   ├── test
-│   └── package.json
-├── processor
-│   ├── src
-│   ├── test
-│   └── package.json
-└── connect.yaml
+.
+├── enabler/
+│   ├── src/
+│   ├── test/
+│   └── README.md
+├── processor/
+│   ├── src/
+│   ├── test/
+│   └── README.md
+├── connect.yaml
+├── docker-compose.yml
+└── README.md
 ```
 
-Connect deployment configuration is specified in `connect.yaml` which is required information needed for publishing of the application. Following is the deployment configuration used by Enabler and Processor modules
+## Modules
+
+### Enabler
+
+The **Enabler** provides the frontend integration between commercetools Checkout and Novalnet's secure payment components.
+
+Responsibilities include:
+
+* Loading Novalnet payment libraries.
+* Rendering secure payment forms.
+* Initializing payment methods.
+* Collecting payment data securely.
+* Communicating with the Processor.
+
+### Processor
+
+The **Processor** is the backend middleware responsible for:
+
+* Creating payments.
+* Calling Novalnet APIs.
+* Processing redirect callbacks.
+* Handling webhooks.
+* Updating commercetools Payments.
+* Synchronizing Orders.
+* Maintaining transaction history.
+
+## Payment Flow
+
+### Direct Payment
+
+Used for payment methods such as Credit Card, SEPA, ACH, Invoice, and Guaranteed payments.
 
 ```
-deployAs:
-  - name: enabler
-    applicationType: assets
-  - name: processor
-    applicationType: service
-    endpoint: /
-    configuration:
-      standardConfiguration:
-        - key: CTP_PROJECT_KEY
-          description: commercetools project key
-          required: true
-        - key: CTP_CLIENT_ID
-          description: commercetools client ID with manage_payments, manage_orders, view_sessions, view_api_clients, manage_checkout_payment_intents & introspect_oauth_tokens scopes
-          required: true
-        - key: CTP_AUTH_URL
-          description: commercetools Auth URL
-          required: true
-          default: https://auth.europe-west1.gcp.commercetools.com
-        - key: CTP_API_URL
-          description: commercetools API URL
-          required: true
-          default: https://api.europe-west1.gcp.commercetools.com
-        - key: CTP_SESSION_URL
-          description: Session API URL
-          required: true
-          default: https://session.europe-west1.gcp.commercetools.com
-        - key: CTP_JWKS_URL
-          description: JWKs url (example - https://mc-api.europe-west1.gcp.commercetools.com/.well-known/jwks.json)
-          required: true
-          default: https://mc-api.europe-west1.gcp.commercetools.com/.well-known/jwks.json
-        - key: CTP_JWT_ISSUER
-          description: JWT Issuer for jwt validation (example - https://mc-api.europe-west1.gcp.commercetools.com)
-          required: true
-          default: https://mc-api.europe-west1.gcp.commercetools.com
-      securedConfiguration:
-        - key: CTP_CLIENT_SECRET
-          description: commercetools client secret
-          required: true
+Customer
+   │
+Checkout
+   │
+Processor
+   │
+Create Payment
+   │
+Novalnet Payment/Authorization API
+   │
+Update Payment
+   │
+Sync Order & Payment States
 ```
 
-Here you can see the details about various variables in configuration
+### Redirect Payment
 
-- `CTP_PROJECT_KEY`: The key of commercetools composable commerce project.
-- `CTP_CLIENT_ID`: The client ID of your commercetools composable commerce user account. It is used in commercetools client to communicate with commercetools composable commerce via SDK. Expected scopes are: `manage_payments` `manage_orders` `view_sessions` `view_api_clients` `manage_checkout_payment_intents` `introspect_oauth_tokens` `manage_types` `view_types`.
-- `CTP_CLIENT_SECRET`: The client secret of commercetools composable commerce user account. It is used in commercetools client to communicate with commercetools composable commerce via SDK.
-- `CTP_AUTH_URL`: The URL for authentication in commercetools platform. It is used to generate OAuth 2.0 token which is required in every API call to commercetools composable commerce. The default value is `https://auth.europe-west1.gcp.commercetools.com`. For details, please refer to documentation [here](https://docs.commercetools.com/tutorials/api-tutorial#authentication).
-- `CTP_API_URL`: The URL for commercetools composable commerce API. Default value is `https://api.europe-west1.gcp.commercetools.com`.
-- `CTP_SESSION_URL`: The URL for session creation in commercetools platform. Connectors relies on the session created to be able to share information between enabler and processor. The default value is `https://session.europe-west1.gcp.commercetools.com`.
-- `CTP_JWKS_URL`: The URL which provides JSON Web Key Set. Default value is `https://mc-api.europe-west1.gcp.commercetools.com/.well-known/jwks.json`
-- `CTP_JWT_ISSUER`: The issuer inside JSON Web Token which is required in JWT validation process. Default value is `https://mc-api.europe-west1.gcp.commercetools.com`
+Used for payment methods such as PayPal, TWINT, Przelewy24, EPS, Bancontact, and other redirect payment methods.
 
-## Development
+```
+Customer
+   │
+Checkout
+   │
+Processor
+   │
+Create Pending Authorization
+   │
+Redirect to Novalnet
+   │
+Customer completes payment
+   │
+Success / Failure Route
+   │
+Transaction Details API
+   │
+Update Payment
+   │
+Sync Order & Payment States
+```
 
-In order to get started developing this connector certain configuration are necessary, most of which involve updating environment variables in both services (enabler, processor).
+## Authorization Logic
 
-#### Configuration steps
+The connector supports both:
 
-#### 1. Environment Variable Setup
+* `payment`
+* `authorize`
 
-Navigate to each service directory and duplicate the .env.template file, renaming the copy to .env. Populate the newly created .env file with the appropriate values.
+Each payment method can be configured independently.
+
+When **Authorize** is selected, the connector also supports a configurable **minimum amount**.
+
+Example:
+
+| Order Amount | Minimum Amount | Result        |
+| ------------ | -------------- | ------------- |
+| €50          | €100           | Payment       |
+| €120         | €100           | Authorization |
+
+## Guaranteed Payments
+
+Supported methods:
+
+* Guaranteed Invoice
+* Guaranteed Direct Debit SEPA
+
+Before processing a guaranteed payment, the connector validates:
+
+* Billing and shipping addresses match.
+* Supported European country.
+* EUR currency.
+* Minimum amount (€99.90).
+* Merchant guarantee configuration.
+* B2B eligibility (where applicable).
+
+If **Force Non-Guaranteed Payment** is enabled, guaranteed payments automatically fall back to their standard payment methods when guarantee conditions are not met.
+
+## Webhook Processing
+
+The connector processes the following Novalnet webhook events.
+
+| Event               | Action                              |
+| ------------------- | ----------------------------------- |
+| PAYMENT             | Initial payment                     |
+| TRANSACTION_CAPTURE | Capture                             |
+| TRANSACTION_CANCEL  | Cancel                              |
+| TRANSACTION_REFUND  | Refund                              |
+| CREDIT              | Partial and Full credit             |
+| TRANSACTION_UPDATE  | Amount, Due Date and Status updates |
+| CHARGEBACK          | Chargeback                          |
+
+## Order & Payment State Synchronization
+
+The connector automatically maps Novalnet payment statuses to commercetools OrderState and PaymentState.
+
+| Novalnet Status | OrderState | PaymentState |
+| --------------- | ---------- | ------------ |
+| PENDING         | Open       | Pending      |
+| ON_HOLD         | Open       | Pending      |
+| CONFIRMED       | Confirmed  | Paid         |
+| Partial Credit  | Confirmed  | Balance Due  |
+| Full Credit     | Confirmed  | Paid         |
+| Refund          | Confirmed  | Credit Owed  |
+| Cancel          | Cancelled  | Failed       |
+| Chargeback      | Cancelled  | Failed       |
+
+Order completion is intentionally not controlled by payment status. Fulfillment remains independent.
+
+## Transaction History
+
+The connector maintains transaction history across:
+
+* Payment Transaction Custom Fields
+* Order Custom Fields
+* Custom Objects (`nn-private-data`)
+
+This preserves:
+
+* Transaction IDs
+* Payment Type
+* Capture history
+* Refund history
+* Credit history
+* Chargeback history
+* Transaction updates
+* Test Mode information
+
+## Configuration
+
+Configuration is managed through **commercetools Connect** using `connect.yaml`.
+
+### commercetools Configuration
+
+Required commercetools settings include:
+
+* Project Key
+* Client ID
+* Client Secret
+* Auth URL
+* API URL
+* Session URL
+* JWKS URL
+* JWT Issuer
+
+### Novalnet Configuration
+
+Required Novalnet settings include:
+
+* Public Key
+* Private Key
+* Tariff ID
+* Client Key
+
+Each payment method also supports its own configuration for:
+
+* Test Mode
+* Payment Action
+* Minimum Authorization Amount
+* Due Date
+* Guaranteed Payment options
+* Credit Card 3D Secure settings
+
+Refer to **connect.yaml** for the complete configuration list.
+
+## Local Development
+
+### Environment Setup
+
+Inside each module:
 
 ```bash
 cp .env.template .env
 ```
 
-#### 2. Spin Up Components via Docker Compose
+Populate the environment variables with:
 
-With the help of docker compose, you are able to spin up all necessary components required for developing the connector by running the following command from the root directory;
+* commercetools credentials
+* Novalnet credentials
+* Merchant configuration
+
+### Start Development Environment
 
 ```bash
 docker compose up
 ```
 
-This command would start 3 required services, necessary for development
+This starts:
 
-1. JWT Server
-2. Enabler
-3. Processor
+* JWT Server
+* Enabler
+* Processor
+
+## Build
+
+Install dependencies:
+
+```bash
+npm install
+```
+
+Build the project:
+
+```bash
+npm run build
+```
+
+## Deployment
+
+The connector is deployed through **commercetools Connect**.
+
+Deployment consists of:
+
+* **Enabler** (Assets)
+* **Processor** (Service)
+
+The deployment configuration is defined in `connect.yaml`.
+
+Post-deployment and pre-undeployment tasks are executed automatically using the configured deployment scripts.
+
+## Additional Documentation
+
+For module-specific implementation details, refer to:
+
+* **Enabler:** `enabler/README.md`
+* **Processor:** `processor/README.md`
+* **Deployment:** `connect.yaml`
+* **Configuration:** `processor/src/config/config.ts`
+* **Webhook Processing:** `processor/src/services/`
+* **Payment Flows:** `processor/src/routes/`
+* **Transaction Handling:** `processor/src/services/novalnet-payment.service.ts`
+* **Order & Payment Synchronization:** `processor/src/services/novalnet-payment.service.ts`
