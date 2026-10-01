@@ -1,6 +1,5 @@
 export type NovalnetOrderStates = {
-  orderState: "Open" | "Confirmed" | "Cancelled";
-  paymentState: "Pending" | "Paid" | "BalanceDue" | "CreditOwed" | "Failed";
+  paymentState: "Pending" | "Paid" | "BalanceDue" | "Failed";
 };
 
 export type NovalnetOrderStateInput = {
@@ -8,7 +7,7 @@ export type NovalnetOrderStateInput = {
   eventType?: string;
   isPartialCapture?: boolean;
   isPartialCredit?: boolean;
-  isPartialCancel?: boolean;
+  isPartialChargeback?: boolean;
 };
 
 export function mapNovalnetOrderStates({
@@ -16,44 +15,51 @@ export function mapNovalnetOrderStates({
   eventType,
   isPartialCapture = false,
   isPartialCredit = false,
-  isPartialCancel = false,
+  isPartialChargeback = false,
 }: NovalnetOrderStateInput): NovalnetOrderStates | null {
   const paymentStatus = String(status ?? "").toUpperCase();
   const event = String(eventType ?? "").toUpperCase();
 
   switch (event) {
     case "TRANSACTION_CAPTURE":
-      if (paymentStatus !== "CONFIRMED") break;
+      if (paymentStatus !== "CONFIRMED") return null;
       return isPartialCapture
-        ? { orderState: "Open", paymentState: "BalanceDue" }
-        : { orderState: "Confirmed", paymentState: "Paid" };
+        ? { paymentState: "BalanceDue" }
+        : { paymentState: "Paid" };
     case "TRANSACTION_CANCEL":
-      return isPartialCancel
-        ? { orderState: "Open", paymentState: "BalanceDue" }
-        : { orderState: "Cancelled", paymentState: "Failed" };
+      return paymentStatus === "CANCELLED" || paymentStatus === "DEACTIVATED"
+        ? { paymentState: "Failed" }
+        : null;
     case "CHARGEBACK":
     case "RETURN_DEBIT":
     case "REVERSAL":
-      return { orderState: "Cancelled", paymentState: "Failed" };
+      return isPartialChargeback
+        ? { paymentState: "BalanceDue" }
+        : { paymentState: "Failed" };
     case "CREDIT":
+      if (paymentStatus === "FAILURE") return null;
       return isPartialCredit
-        ? { orderState: "Open", paymentState: "BalanceDue" }
-        : { orderState: "Confirmed", paymentState: "Paid" };
+        ? { paymentState: "BalanceDue" }
+        : { paymentState: "Paid" };
     case "TRANSACTION_REFUND":
-      return { orderState: "Confirmed", paymentState: "Paid" };
+      return null;
     case "TRANSACTION_UPDATE":
+      if (paymentStatus === "CONFIRMED" && isPartialCapture) {
+        return { paymentState: "BalanceDue" };
+      }
       break;
   }
 
   switch (paymentStatus) {
     case "CONFIRMED":
-      return { orderState: "Confirmed", paymentState: "Paid" };
+      return { paymentState: "Paid" };
     case "PENDING":
     case "ON_HOLD":
-      return { orderState: "Open", paymentState: "Pending" };
+      return { paymentState: "Pending" };
     case "FAILURE":
     case "CANCELLED":
-      return { orderState: "Cancelled", paymentState: "Failed" };
+    case "DEACTIVATED":
+      return { paymentState: "Failed" };
     default:
       return null;
   }
