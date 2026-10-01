@@ -1241,36 +1241,44 @@ private mapNovalnetOrderStates(input: NovalnetOrderStateInput): NovalnetOrderSta
   return mapNovalnetOrderStates(input);
 }
 
-private async getModificationFlags(paymentId: string, eventType: string): Promise<{
+private async getModificationFlags(paymentId: string, eventType: string, status?: string): Promise<{
   isPartialCapture?: boolean;
-  isPartialCancel?: boolean;
+  isPartialChargeback?: boolean;
 } | null> {
-  if (eventType !== "TRANSACTION_CAPTURE" && eventType !== "TRANSACTION_CANCEL") return {};
+  const captureEvent = eventType === "TRANSACTION_CAPTURE" || eventType === "TRANSACTION_UPDATE";
+  const chargebackEvent = ["CHARGEBACK", "RETURN_DEBIT", "REVERSAL"].includes(eventType);
+  if (!captureEvent && !chargebackEvent) return {};
 
   const payment = (await projectApiRoot.payments().withId({ ID: paymentId }).get().execute()).body;
   const captured = payment.transactions
     .filter((tx) => tx.type === "Charge" && tx.state === "Success")
     .reduce((sum, tx) => sum + tx.amount.centAmount, 0);
+  if (captured > payment.amountPlanned.centAmount) {
+    throw new Error("Captured amount exceeds the planned Payment amount");
+  }
   if (eventType === "TRANSACTION_CAPTURE" && captured <= 0) return null;
+  if (eventType === "TRANSACTION_UPDATE" && status === "CONFIRMED" && captured <= 0) return null;
+  if (chargebackEvent) {
+    if (captured <= 0) return null;
+    const chargedBack = payment.transactions
+      .filter((tx) => tx.type === "Chargeback" && tx.state === "Success")
+      .reduce((sum, tx) => sum + tx.amount.centAmount, 0);
+    if (chargedBack > captured) {
+      throw new Error("Chargeback amount exceeds captured Payment amount");
+    }
+    return { isPartialChargeback: captured > chargedBack };
+  }
   return {
     isPartialCapture: captured < payment.amountPlanned.centAmount,
-    isPartialCancel: captured > 0 && captured < payment.amountPlanned.centAmount,
   };
 }
 	
 	private async updateOrderStates({
 	  paymentId,
-	  orderState,
 	  paymentState,
 	}: {
 	  paymentId: string;
-	  orderState: "Open" | "Confirmed" | "Cancelled";
-	  paymentState:
-	    | "Pending"
-	    | "Paid"
-	    | "BalanceDue"
-	    | "CreditOwed"
-	    | "Failed";
+	  paymentState: NovalnetOrderStates["paymentState"];
 	}): Promise<void> {
 	
 	  let order = await this.getOrderByPaymentId(paymentId);
@@ -1310,7 +1318,6 @@ private async getModificationFlags(paymentId: string, eventType: string): Promis
 	  log.info("[ORDER_STATE] Updated", {
 	    orderId: order.id,
 	    paymentId,
-	    orderState,
 	    paymentState,
 	  });
 	}
@@ -1711,7 +1718,9 @@ private async getModificationFlags(paymentId: string, eventType: string): Promis
     try {
       const flags = eventType === "PAYMENT"
         ? {}
-        : await this.getModificationFlags(paymentId, eventType);
+        : await this.getModificationFlags(
+            paymentId, eventType, String(webhook.transaction?.status ?? "").toUpperCase(),
+          );
       if (flags) {
         const states = this.mapNovalnetOrderStates({
           status: webhook.transaction?.status,
@@ -1816,6 +1825,38 @@ private async getModificationFlags(paymentId: string, eventType: string): Promis
         webhook,
         locale,
       );
+
+    if (["CANCELLED", "DEACTIVATED"].includes(novalnetStatus)) {
+      const cancellationInteractionId = `${pspReference}-CancelAuthorization`;
+      if (payment.transactions?.some(
+        (transaction: any) =>
+          transaction.type === "CancelAuthorization" &&
+          transaction.state === "Success" &&
+          transaction.interactionId === cancellationInteractionId,
+      )) {
+        return "Already synchronized";
+      }
+
+      const cancellationComments = this.buildTransactionComments(
+        { ...webhook, event: { ...webhook.event, type: "TRANSACTION_CANCEL" } },
+        locale,
+      );
+      await this.processWebhookTransaction({
+        webhook,
+        transactionComments: cancellationComments,
+        changeTransactionState: false,
+        skipSettlement: true,
+      });
+      await this.addSettlementTransactionIfRequired({
+        paymentId,
+        pspReference,
+        transactionType: "CancelAuthorization",
+        amount: webhook.transaction?.amount,
+        currency: webhook.transaction?.currency,
+        status: novalnetStatus,
+      });
+      return cancellationComments;
+    }
 
     const currentComments =
       tx.custom?.fields?.transactionComments ?? "";
